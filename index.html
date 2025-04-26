@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gelişmiş Deprem Monitörü</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        /* --- Değişkenler ve Temel Stiller --- */
+        :root {
+            --bg-dark: #0f172a; /* Daha Koyu Lacivert */
+            --bg-card: #1e293b; /* Kart ve Header Arkaplanı */
+            --bg-menu: #111827; /* Menü Arkaplanı */
+            --text-primary: #e2e8f0; /* Ana Metin Rengi (Biraz daha maviye dönük) */
+            --text-secondary: #94a3b8; /* İkincil Metin Rengi */
+            --accent-blue: #38bdf8; /* Daha Canlı Mavi */
+            --accent-cyan: #22d3ee; /* Cyan Vurgu */
+            --accent-green: #4ade80; /* Canlı Yeşil */
+            --accent-yellow: #facc15; /* Canlı Sarı */
+            --accent-orange: #fb923c; /* Canlı Turuncu */
+            --accent-red: #f87171;   /* Canlı Kırmızı */
+            --border-color: #334155;
+            --shadow-color-light: rgba(0, 0, 0, 0.15);
+            --shadow-color-dark: rgba(0, 0, 0, 0.3);
+            --menu-width: 270px;
+            --header-height: 65px;
+            --modal-max-width: 500px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; /* Inter font (CDN eklemesi gerekebilir veya sistem fontu kullanılır) */
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+             -webkit-font-smoothing: antialiased; /* Daha yumuşak font render */
+             -moz-osx-font-smoothing: grayscale;
+        }
+        body.modal-open, body.menu-open {
+            overflow: hidden; /* Modal veya menü açıkken kaydırmayı engelle */
+        }
+
+        .container {
+            position: relative;
+            min-height: 100vh;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1); /* Daha yumuşak geçiş */
+            background-color: var(--bg-dark);
+            padding-top: var(--header-height);
+            z-index: 1; /* Overlay'in arkasında kalması için */
+        }
+
+        .container.menu-open {
+            transform: translateX(var(--menu-width));
+        }
+
+        /* --- Header --- */
+        .header {
+            background: linear-gradient(to bottom, var(--bg-card), rgba(30, 41, 59, 0.95));
+            padding: 0 20px;
+            height: var(--header-height);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
+            box-shadow: 0 4px 12px var(--shadow-color-dark);
+             transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .container.menu-open .header {
+             transform: translateX(var(--menu-width));
+         }
+
+        .header h1 {
+            font-size: 1.4em;
+            font-weight: 700; /* Daha kalın başlık */
+            color: var(--text-primary);
+            letter-spacing: -0.5px; /* Hafif sıkıştırma */
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .header h1 i {
+             color: var(--accent-blue);
+             font-size: 1.2em;
+        }
+         .header h1 .feed-name {
+             font-size: 0.6em;
+             font-weight: 400;
+             color: var(--text-secondary);
+             margin-left: 5px;
+             background-color: var(--bg-dark);
+             padding: 2px 6px;
+             border-radius: 4px;
+             vertical-align: middle;
+         }
+
+        .header-actions button {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.6em;
+            cursor: pointer;
+            padding: 10px;
+             line-height: 1;
+             transition: color 0.2s ease, transform 0.2s ease;
+             margin-left: 5px; /* Butonlar arası boşluk */
+        }
+        .header-actions button:hover {
+            color: var(--text-primary);
+            transform: scale(1.1);
+        }
+
+        .refresh-button i.fa-spin {
+             animation: spin 1s linear infinite;
+        }
+        .refresh-button.loading {
+             color: var(--accent-blue);
+        }
+
+
+        /* --- Yandan Açılır Menü --- */
+        .side-menu {
+            position: fixed;
+            top: 0;
+            left: calc(-1 * var(--menu-width) - 10px); /* Biraz daha dışarıdan başla */
+            width: var(--menu-width);
+            height: 100%;
+            background-color: var(--bg-menu);
+            padding: 0px 0px 20px 0px; /* Alt boşluk kalsın */
+            box-shadow: 5px 0 15px rgba(0, 0, 0, 0.4);
+            transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1100;
+            display: flex;
+            flex-direction: column;
+             border-right: 1px solid var(--border-color);
+        }
+
+        .side-menu.open {
+            left: 0;
+        }
+
+        .menu-header {
+            padding: 20px;
+             padding-top: calc(var(--header-height) + 10px); /* Header'ın altına hizala */
+             padding-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+             background: linear-gradient(to bottom, rgba(30, 41, 59, 0.8), rgba(17, 24, 39, 0.9));
+        }
+        .menu-header h2 {
+            font-size: 1.3em;
+            color: var(--text-primary);
+             font-weight: 600;
+        }
+         .close-menu { /* Styling already good */ }
+
+        .side-menu nav {
+             flex-grow: 1;
+             overflow-y: auto; /* Uzun menüler için kaydırma */
+             padding: 15px 10px;
+        }
+        .side-menu nav h3 { /* Kategori başlığı */
+            color: var(--accent-cyan);
+             font-size: 0.8em;
+             text-transform: uppercase;
+             letter-spacing: 1px;
+             padding: 15px 10px 5px 10px;
+             font-weight: 600;
+        }
+
+        .side-menu nav ul {
+            list-style: none;
+            padding: 0;
+        }
+        .side-menu nav ul li a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 1em;
+            display: flex;
+            align-items: center;
+            padding: 13px 15px; /* Biraz daha geniş */
+            border-radius: 8px; /* Daha yuvarlak köşeler */
+            transition: background-color 0.2s ease, color 0.2s ease;
+             margin: 5px; /* Linkler arası hafif boşluk */
+        }
+         .side-menu nav ul li a i {
+            margin-right: 18px;
+            width: 22px;
+            text-align: center;
+             color: var(--accent-blue);
+             font-size: 1.15em;
+             transition: color 0.2s ease;
+        }
+        .side-menu nav ul li a:hover {
+            background-color: rgba(56, 189, 248, 0.1); /* Accent blue şeffaf */
+            color: var(--text-primary);
+        }
+         .side-menu nav ul li a.active {
+             background-color: var(--accent-blue);
+             color: var(--bg-menu); /* Aktif link metin rengi */
+             font-weight: 500;
+        }
+         .side-menu nav ul li a.active i {
+            color: var(--bg-menu); /* Aktif link ikon rengi */
+        }
+
+        /* --- Overlay --- */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.7); /* Biraz daha koyu */
+            z-index: 999; /* Menünün hemen arkası */
+            opacity: 0; visibility: hidden;
+            transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .overlay.visible { opacity: 1; visibility: visible; }
+
+        /* --- Ana İçerik Alanı --- */
+        .main-content { padding: 25px 15px; }
+
+        /* --- Filtreleme/Sıralama Alanı --- */
+        .controls-container {
+             background-color: var(--bg-card);
+             padding: 15px;
+             border-radius: 12px;
+             margin-bottom: 25px;
+             box-shadow: 0 4px 10px var(--shadow-color-light);
+              border: 1px solid var(--border-color);
+             display: flex;
+             flex-wrap: wrap; /* Küçük ekranlarda alt alta geçebilir */
+             gap: 15px;
+             align-items: center;
+             justify-content: space-between;
+        }
+        .filter-group, .sort-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+         .controls-container label {
+              font-size: 0.9em;
+              color: var(--text-secondary);
+              font-weight: 500;
+         }
+        .controls-container select {
+             background-color: var(--bg-dark);
+             color: var(--text-primary);
+             border: 1px solid var(--border-color);
+             padding: 8px 12px; /* Daha geniş */
+             border-radius: 6px;
+             font-size: 0.9em;
+             outline: none;
+             transition: border-color 0.2s ease;
+             appearance: none; /* Varsayılan oku kaldır */
+             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E"); /* Özel ok ikonu */
+             background-repeat: no-repeat;
+             background-position: right 10px center;
+             background-size: 1em;
+             padding-right: 30px; /* Ok ikonu için yer */
+        }
+        .controls-container select:focus {
+             border-color: var(--accent-blue);
+        }
+
+
+        /* --- Yükleniyor / Hata / Boş Durum --- */
+        #loading, #error-message, #no-earthquakes-message {
+            text-align: center;
+            padding: 40px 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+             font-size: 1.05em;
+        }
+
+        #loading { display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 250px;}
+        .spinner { /* Daha stilize spinner */
+             width: 48px; height: 48px;
+             border: 5px solid var(--border-color);
+             border-bottom-color: var(--accent-blue);
+             border-radius: 50%;
+             display: inline-block;
+             animation: spin 1s linear infinite;
+             margin-bottom: 15px;
+        }
+         #loading span { color: var(--text-secondary); }
+
+        #error-message {
+            background-color: rgba(248, 113, 113, 0.1); /* Red accent */
+            color: var(--accent-red);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+             display: none; /* Başlangıçta gizli */
+        }
+         #error-message i { margin-right: 8px; }
+
+        #no-earthquakes-message {
+            color: var(--text-secondary);
+            display: none; /* Başlangıçta gizli */
+             font-style: italic;
+         }
+         #no-earthquakes-message i { margin-right: 8px; font-size: 1.2em; vertical-align: middle; }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+
+        /* --- Deprem Listesi --- */
+        #earthquake-list { list-style: none; padding: 0; }
+
+        .earthquake-item {
+            background-color: var(--bg-card);
+            border-radius: 10px; margin-bottom: 18px; /* Biraz daha boşluk */
+            border: 1px solid var(--border-color);
+            border-left-width: 6px; /* Sol kenar kalınlığı */
+            box-shadow: 0 2px 5px var(--shadow-color-light);
+            display: flex; overflow: hidden;
+            transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.3s ease;
+            cursor: pointer;
+             opacity: 0; /* Fade-in animasyonu için başlangıç */
+             transform: translateY(10px); /* Fade-in animasyonu için başlangıç */
+        }
+        .earthquake-item.visible { /* Animasyon için class */
+             opacity: 1;
+             transform: translateY(0);
+         }
+
+
+        .earthquake-item:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 6px 15px var(--shadow-color-dark);
+            border-color: var(--accent-cyan); /* Hover border */
+             border-left-color: inherit; /* Sol kenar rengi korunur */
+        }
+
+        /* Büyüklük Renkleri (Border ve Magnitude Text için) */
+        .earthquake-item.mag-low { border-left-color: var(--accent-green); --mag-color: var(--accent-green); }
+        .earthquake-item.mag-moderate { border-left-color: var(--accent-yellow); --mag-color: var(--accent-yellow); }
+        .earthquake-item.mag-strong { border-left-color: var(--accent-orange); --mag-color: var(--accent-orange); }
+        .earthquake-item.mag-severe { border-left-color: var(--accent-red); --mag-color: var(--accent-red); }
+
+
+        .magnitude-display {
+            flex-shrink: 0; width: 80px; /* Biraz daha geniş */
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-weight: 700; /* Daha kalın */
+            color: var(--mag-color); /* Dinamik renk */
+            padding: 15px 0;
+            border-right: 1px solid var(--border-color);
+        }
+        .magnitude-value { font-size: 1.9em; line-height: 1; }
+        .magnitude-unit { font-size: 0.7em; color: var(--text-secondary); text-transform: uppercase; margin-top: 2px;}
+
+        .details {
+            flex-grow: 1; padding: 15px; overflow: hidden;
+        }
+        .details h3 { /* Konum */
+            font-size: 1.1em; font-weight: 600; margin-bottom: 10px;
+            color: var(--text-primary);
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .details-grid {
+            display: grid;
+            grid-template-columns: auto 1fr; gap: 6px 12px;
+            font-size: 0.9em; color: var(--text-secondary);
+        }
+        .details-grid i {
+            font-size: 1em; color: var(--accent-cyan); /* İkon rengi */
+            text-align: center; margin-top: 1px; width: 16px; /* İkon hizalaması */
+        }
+        .details-grid span strong { /* Değer */
+             color: var(--text-primary);
+             font-weight: 500;
+             margin-left: 5px;
+         }
+
+        .tsunami-alert {
+            margin-top: 10px; font-size: 0.95em;
+            color: var(--accent-red); font-weight: 700; /* Daha kalın uyarı */
+            display: inline-flex; /* Sadece içerik kadar yer kapla */
+            align-items: center; gap: 6px;
+            padding: 6px 10px;
+            background-color: rgba(248, 113, 113, 0.15);
+            border: 1px solid rgba(248, 113, 113, 0.4);
+            border-radius: 6px;
+        }
+        .tsunami-alert i { color: inherit; }
+
+        /* --- Detay Modalı --- */
+        #detail-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(15, 23, 42, 0.8); /* Daha koyu, yarı şeffaf arkaplan */
+            z-index: 1200;
+            display: flex;
+            align-items: center; justify-content: center;
+            padding: 20px;
+            opacity: 0; visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+             backdrop-filter: blur(5px); /* Arka planı bulanıklaştır */
+             -webkit-backdrop-filter: blur(5px);
+        }
+         #detail-modal.visible {
+            opacity: 1; visibility: visible;
+        }
+
+        .modal-content {
+            background-color: var(--bg-card);
+            border-radius: 12px;
+            padding: 25px;
+            max-width: var(--modal-max-width);
+            width: 100%;
+            box-shadow: 0 10px 30px var(--shadow-color-dark);
+            border: 1px solid var(--border-color);
+             position: relative; /* Kapatma butonu için */
+             transform: scale(0.95); /* Giriş animasyonu */
+             transition: transform 0.3s ease;
+             overflow-y: auto; /* İçerik sığmazsa scroll */
+             max-height: 85vh;
+        }
+        #detail-modal.visible .modal-content {
+            transform: scale(1);
+        }
+
+         .modal-header {
+             display: flex;
+             justify-content: space-between;
+             align-items: flex-start; /* Başlık uzunsa buton üste hizalansın */
+             border-bottom: 1px solid var(--border-color);
+             padding-bottom: 15px;
+             margin-bottom: 20px;
+         }
+        .modal-header h2 {
+            font-size: 1.4em;
+            color: var(--accent-blue);
+            margin-right: 15px; /* Butonla arasına boşluk */
+            font-weight: 600;
+         }
+
+         .close-modal {
+            background: none; border: none;
+             font-size: 1.8em; color: var(--text-secondary);
+            cursor: pointer; line-height: 1; padding: 5px;
+             transition: color 0.2s ease, transform 0.2s ease;
+         }
+         .close-modal:hover {
+             color: var(--text-primary);
+             transform: rotate(90deg);
+        }
+
+        .modal-body .detail-item {
+             margin-bottom: 15px;
+             display: flex;
+             align-items: start;
+             gap: 10px;
+             font-size: 1em;
+        }
+         .modal-body .detail-item i {
+            color: var(--accent-cyan);
+            width: 20px;
+            text-align: center;
+             margin-top: 3px;
+             flex-shrink: 0;
+         }
+        .modal-body .detail-item strong {
+            color: var(--text-primary);
+            display: block; /* Değerin altına inmesini sağla */
+            font-weight: 500;
+         }
+        .modal-body .detail-item span {
+            color: var(--text-secondary);
+         }
+         .modal-body .detail-item a {
+            color: var(--accent-blue);
+            text-decoration: none;
+            word-break: break-all; /* Uzun linkler kırılsın */
+             transition: color 0.2s ease;
+         }
+        .modal-body .detail-item a:hover {
+            color: var(--accent-cyan);
+            text-decoration: underline;
+         }
+         .modal-map-link {
+             display: inline-flex; /* İkonla yan yana */
+             align-items: center;
+             gap: 5px;
+         }
+         .modal-map-link i {
+             width: auto; margin: 0; font-size: 0.9em; /* İkon ayarı */
+         }
+
+        .modal-magnitude { /* Modaldaki büyüklük vurgusu */
+            font-size: 1.5em;
+            font-weight: 700;
+            padding: 5px 10px;
+            border-radius: 6px;
+             display: inline-block; /* İçerik kadar yer */
+             margin-bottom: 10px; /* Diğer detaylardan ayır */
+        }
+
+
+    </style>
+</head>
+<body>
+
+    <!-- Yandan Açılır Menü -->
+    <aside class="side-menu" id="sideMenu">
+        <div class="menu-header">
+            <h2><i class="fas fa-compass"></i> Menü</h2>
+            <button class="close-menu" id="closeMenuButton" aria-label="Menüyü Kapat">×</button>
+        </div>
+        <nav>
+             <h3><i class="fas fa-stream"></i> Veri Akışı</h3>
+            <ul>
+                <li><a href="#" data-api="https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson" data-feed-name="Son Saat"><i class="fas fa-clock"></i> Son Saat</a></li>
+                <li><a href="#" data-api="https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson" data-feed-name="Son 24 Saat" class="active"><i class="fas fa-calendar-day"></i> Son 24 Saat</a></li>
+                <li><a href="#" data-api="https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson" data-feed-name="Son 7 Gün"><i class="fas fa-calendar-week"></i> Son 7 Gün</a></li>
+                <li><a href="#" data-api="https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_month.geojson" data-feed-name="Son 30 Gün (4.5+)" ><i class="fas fa-calendar-alt"></i> Son 30 Gün (M 4.5+)</a></li>
+            </ul>
+             <h3><i class="fas fa-sliders-h"></i> Görünüm</h3>
+            <ul>
+                <li><a href="#" onclick="alert('Bu özellik yakında eklenecek!'); closeMenu(); return false;"><i class="fas fa-map-marked-alt"></i> Tam Ekran Harita</a></li>
+                <li><a href="#" onclick="alert('Bu özellik yakında eklenecek!'); closeMenu(); return false;"><i class="fas fa-cog"></i> Ayarlar</a></li>
+            </ul>
+             <h3><i class="fas fa-info-circle"></i> Bilgi</h3>
+             <ul>
+                 <li><a href="profile_card.html" target="_blank" rel="noopener noreferrer" onclick="closeMenu()"><i class="fas fa-database"></i> Geliştirici bilgisi!</a></li>
+             </ul>
+        </nav>
+        <!-- <div class="menu-footer"> Gerekirse eklenebilir -->
+    </aside>
+
+    <!-- Overlay -->
+    <div class="overlay" id="overlay"></div>
+
+    <!-- Detay Modalı -->
+    <div id="detail-modal">
+        <div class="modal-content">
+             <div class="modal-header">
+                <h2 id="modal-title">Deprem Detayları</h2>
+                <button class="close-modal" id="closeModalButton" aria-label="Detay Penceresini Kapat">×</button>
+             </div>
+             <div class="modal-body" id="modal-body">
+                <!-- Dinamik İçerik Buraya Gelecek -->
+             </div>
+        </div>
+    </div>
+
+
+    <!-- Ana İçerik Kapsayıcı -->
+    <div class="container" id="container">
+        <!-- Header -->
+        <header class="header">
+            <button class="menu-toggle header-actions" id="menuToggleButton" aria-label="Menüyü Aç">
+                <i class="fas fa-bars"></i>
+            </button>
+            <h1>
+                 <i class="fas fa-satellite-dish"></i>Depremler
+                 <span class="feed-name" id="header-feed-name">Son 24 Saat</span>
+             </h1>
+            <div class="header-actions">
+                <button class="refresh-button" id="refreshButton" aria-label="Verileri Yenile">
+                     <i class="fas fa-sync-alt"></i>
+                 </button>
+                <!-- Başka header aksiyonları buraya eklenebilir -->
+            </div>
+        </header>
+
+        <!-- Ana İçerik -->
+        <main class="main-content">
+
+            <!-- Filtreleme/Sıralama Kontrolleri -->
+            <div class="controls-container">
+                <div class="filter-group">
+                    <label for="minMagnitude"><i class="fas fa-filter"></i> Min Büyüklük:</label>
+                    <select id="minMagnitude">
+                         <option value="0">Tümü</option>
+                         <option value="2.5">2.5+</option>
+                         <option value="4.0">4.0+</option>
+                         <option value="5.0">5.0+</option>
+                         <option value="6.0">6.0+</option>
+                    </select>
+                 </div>
+                 <div class="sort-group">
+                    <label for="sortBy"><i class="fas fa-sort-amount-down"></i> Sırala:</label>
+                    <select id="sortBy">
+                         <option value="time">Zaman (En Yeni)</option>
+                        <option value="magnitude" selected>Büyüklük (En Büyük)</option>
+                        <option value="depth_asc">Derinlik (Yüzeye Yakın)</option>
+                         <option value="depth_desc">Derinlik (En Derin)</option>
+                    </select>
+                </div>
+            </div>
+
+
+            <!-- Yükleniyor Göstergesi -->
+            <div id="loading">
+                <div class="spinner"></div>
+                <span>Deprem verileri getiriliyor...</span>
+            </div>
+
+            <!-- Hata Mesajı Alanı -->
+            <div id="error-message"><i class="fas fa-exclamation-triangle"></i> <span id="error-text"></span></div>
+
+            <!-- Deprem Bulunamadı Mesajı Alanı -->
+            <div id="no-earthquakes-message"><i class="fas fa-info-circle"></i> Seçili kriterlere uygun deprem bulunamadı.</div>
+
+
+            <!-- Deprem Listesi -->
+            <ul id="earthquake-list">
+                <!-- Dinamik olarak doldurulacak -->
+            </ul>
+        </main>
+    </div>
+
+    <script>
+        // --- Element Referansları ---
+        const earthquakeList = document.getElementById('earthquake-list');
+        const loadingIndicator = document.getElementById('loading');
+        const errorMessageDiv = document.getElementById('error-message');
+        const errorTextSpan = document.getElementById('error-text');
+        const noEarthquakesMessageDiv = document.getElementById('no-earthquakes-message');
+        const menuToggleButton = document.getElementById('menuToggleButton');
+        const closeMenuButton = document.getElementById('closeMenuButton');
+        const sideMenu = document.getElementById('sideMenu');
+        const overlay = document.getElementById('overlay');
+        const container = document.getElementById('container');
+        const refreshButton = document.getElementById('refreshButton');
+        const refreshIcon = refreshButton.querySelector('i');
+        const minMagSelect = document.getElementById('minMagnitude');
+        const sortBySelect = document.getElementById('sortBy');
+        const detailModal = document.getElementById('detail-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+        const closeModalButton = document.getElementById('closeModalButton');
+        const feedLinks = sideMenu.querySelectorAll('nav ul li a[data-api]');
+        const headerFeedName = document.getElementById('header-feed-name');
+        const body = document.body;
+
+        // --- API ve Ayarlar ---
+        let API_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson'; // Başlangıç API
+        let currentFeedName = 'Son 24 Saat'; // Başlangıç Adı
+        const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 dakika
+        let refreshIntervalId = null;
+        let currentEarthquakeData = []; // Ham veri deposu
+        let quakeRefs = {}; // ID'ye göre deprem verisine hızlı erişim için
+
+        // --- Fonksiyonlar ---
+
+        /** Zamanı TR formatına çevirir */
+        function formatTime(timestamp) {
+             try { /*...*/ return new Date(timestamp).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return "Bilinmeyen"; }
+        }
+
+        /** Büyüklüğe göre CSS sınıfı */
+        function getMagnitudeClass(magnitude) {
+             if (magnitude === null) return 'mag-low'; // Veya 'mag-unknown'
+             if (magnitude < 3.0) return 'mag-low';
+             if (magnitude < 5.0) return 'mag-moderate';
+             if (magnitude < 6.5) return 'mag-strong';
+             return 'mag-severe';
+        }
+
+        /** Büyüklük değerini güvenli şekilde alır ve formatlar */
+        function getMagnitude(properties) {
+            return properties.mag !== null && typeof properties.mag === 'number' ? properties.mag.toFixed(1) : 'N/A';
+        }
+
+         /** Derinlik değerini güvenli şekilde alır ve formatlar */
+        function getDepth(coordinates) {
+             return Array.isArray(coordinates) && coordinates.length > 2 && coordinates[2] !== null && typeof coordinates[2] === 'number'
+                 ? coordinates[2].toFixed(1) : '?';
+        }
+
+        /** Koordinatları güvenli şekilde alır */
+         function getCoordinates(geometry) {
+            if (geometry && Array.isArray(geometry.coordinates) && geometry.coordinates.length >= 2) {
+                 return {
+                     lat: geometry.coordinates[1],
+                     lon: geometry.coordinates[0]
+                 };
+            }
+             return { lat: null, lon: null };
+         }
+
+
+        /** Ana veri çekme fonksiyonu */
+        async function fetchEarthquakes(showLoading = true) {
+            if(showLoading) {
+                loadingIndicator.style.display = 'flex';
+                errorMessageDiv.style.display = 'none';
+                 noEarthquakesMessageDiv.style.display = 'none';
+                 earthquakeList.innerHTML = ''; // Yükleme başlarken temizle
+            }
+            refreshButton.classList.add('loading');
+            refreshIcon.classList.add('fa-spin');
+
+             try {
+                console.log(`Fetching data from: ${API_URL}`);
+                 const response = await fetch(API_URL + `?t=${new Date().getTime()}`); // Cache bust
+                 if (!response.ok) {
+                     const errorData = await response.text(); // Sunucudan gelen hatayı okumaya çalış
+                     console.error("API Response Error Text:", errorData);
+                     throw new Error(`API Hatası (${response.status}): Veri alınamadı. ${response.statusText}`);
+                }
+                 const data = await response.json();
+                if (!data || !data.features) {
+                     throw new Error("API'den geçersiz veya boş veri formatı alındı.");
+                 }
+
+                 // Deprem verilerini ID'ye göre sakla
+                quakeRefs = {};
+                currentEarthquakeData = data.features.filter(q => q && q.id); // Geçerli ID'si olanları al
+                currentEarthquakeData.forEach(q => quakeRefs[q.id] = q);
+
+                 filterAndDisplayEarthquakes(); // Veri geldikten sonra filtrele ve göster
+                 updateHeaderFeedName();
+
+            } catch (error) {
+                 console.error("Veri alımında kritik hata:", error);
+                errorMessageDiv.style.display = 'block';
+                errorTextSpan.textContent = `Veri yüklenemedi: ${error.message}. Lütfen tekrar deneyin.`;
+                 earthquakeList.innerHTML = ''; // Hata varsa listeyi temizle
+                 currentEarthquakeData = []; // Veriyi sıfırla
+                 quakeRefs = {};
+             } finally {
+                loadingIndicator.style.display = 'none';
+                refreshButton.classList.remove('loading');
+                refreshIcon.classList.remove('fa-spin');
+             }
+        }
+
+         /** Verileri filtreler ve sıralar */
+        function filterAndDisplayEarthquakes() {
+             let filteredQuakes = [...currentEarthquakeData];
+            const minMag = parseFloat(minMagSelect.value);
+            const sortBy = sortBySelect.value;
+
+             // 1. Filtreleme
+             if (minMag > 0) {
+                filteredQuakes = filteredQuakes.filter(q => {
+                     const mag = q.properties.mag;
+                     return mag !== null && typeof mag === 'number' && mag >= minMag;
+                 });
+             }
+
+             // 2. Sıralama
+             filteredQuakes.sort((a, b) => {
+                 const magA = a.properties.mag || 0;
+                 const magB = b.properties.mag || 0;
+                 const timeA = a.properties.time || 0;
+                 const timeB = b.properties.time || 0;
+                 const depthA = (Array.isArray(a.geometry?.coordinates) && a.geometry.coordinates.length > 2) ? a.geometry.coordinates[2] : Infinity;
+                 const depthB = (Array.isArray(b.geometry?.coordinates) && b.geometry.coordinates.length > 2) ? b.geometry.coordinates[2] : Infinity;
+
+                 switch (sortBy) {
+                    case 'magnitude': return magB - magA;
+                     case 'time': return timeB - timeA;
+                     case 'depth_asc': return depthA - depthB; // Yüzeye yakın olan önce (küçük derinlik)
+                     case 'depth_desc': return depthB - depthA; // En derin olan önce
+                    default: return timeB - timeA; // Varsayılan zaman
+                }
+            });
+
+             displayEarthquakes(filteredQuakes);
+         }
+
+
+        /** Depremleri DOM'a ekler */
+        function displayEarthquakes(earthquakes) {
+            // Önce eski event listenerları temizle (modal açma için)
+            Array.from(earthquakeList.children).forEach(item => {
+                item.removeEventListener('click', handleItemClick);
+            });
+            earthquakeList.innerHTML = ''; // Temizle
+
+            if (!earthquakes || earthquakes.length === 0) {
+                 noEarthquakesMessageDiv.style.display = 'block';
+                 return;
+            } else {
+                noEarthquakesMessageDiv.style.display = 'none';
+            }
+
+            const fragment = document.createDocumentFragment(); // Performans için fragment kullan
+            earthquakes.forEach((quake, index) => {
+                 // Güvenlik kontrolleri
+                 if (!quake || !quake.properties || !quake.geometry) return;
+
+                 const properties = quake.properties;
+                 const geometry = quake.geometry;
+                 const coords = getCoordinates(geometry);
+                 const magnitude = getMagnitude(properties);
+                 const magnitudeClass = getMagnitudeClass(properties.mag);
+                 const depth = getDepth(geometry.coordinates);
+                 const location = properties.place || 'Bilinmeyen Konum';
+                 const time = formatTime(properties.time);
+                 const tsunamiAlert = properties.tsunami === 1;
+                 const detailUrl = properties.url || '#'; // USGS Detay linki
+
+
+                 const listItem = document.createElement('li');
+                 listItem.className = `earthquake-item ${magnitudeClass}`;
+                 listItem.setAttribute('data-id', quake.id);
+
+                 // Görünürlük animasyonu için gecikme (isteğe bağlı ama hoş)
+                listItem.style.transitionDelay = `${Math.min(index * 0.04, 0.5)}s`;
+
+
+                 listItem.innerHTML = `
+                    <div class="magnitude-display">
+                        <span class="magnitude-value">${magnitude}</span>
+                        <span class="magnitude-unit">${properties.magType || 'ML'}</span>
+                    </div>
+                    <div class="details">
+                        <h3>${location}</h3>
+                        <div class="details-grid">
+                            <i class="fas fa-calendar-alt fa-fw"></i> <span><strong>Zaman:</strong> ${time}</span>
+                            <i class="fas fa-arrow-down fa-fw"></i> <span><strong>Derinlik:</strong> ${depth} km</span>
+                            <i class="fas fa-map-marker-alt fa-fw"></i> <span><strong>Konum:</strong> ${coords.lat ? coords.lat.toFixed(3) : 'N/A'}, ${coords.lon ? coords.lon.toFixed(3) : 'N/A'}</span>
+                         </div>
+                        ${tsunamiAlert ? `<div class="tsunami-alert"><i class="fas fa-water fa-fw"></i> Tsunami Uyarısı Aktif!</div>` : ''}
+                     </div>`;
+
+                 // Detay modalını açmak için olay dinleyici
+                 listItem.addEventListener('click', handleItemClick);
+                 fragment.appendChild(listItem);
+             });
+
+             earthquakeList.appendChild(fragment);
+
+            // Fade-in animasyonunu tetikle (kısa bir gecikmeyle daha stabil çalışabilir)
+             requestAnimationFrame(() => {
+                 Array.from(earthquakeList.children).forEach(item => item.classList.add('visible'));
+             });
+
+         }
+
+        /** Liste elemanı tıklama yöneticisi (Modal için) */
+        function handleItemClick(event) {
+            const listItem = event.currentTarget;
+            const quakeId = listItem.getAttribute('data-id');
+             if (quakeRefs[quakeId]) {
+                openDetailModal(quakeRefs[quakeId]);
+             } else {
+                console.error("Detayları gösterilecek deprem bulunamadı:", quakeId);
+                alert("Deprem detayları yüklenemedi.");
+             }
+         }
+
+
+         /** Detay modalını açar ve doldurur */
+         function openDetailModal(quake) {
+             const properties = quake.properties;
+             const geometry = quake.geometry;
+             const coords = getCoordinates(geometry);
+             const magnitude = getMagnitude(properties);
+             const depth = getDepth(geometry.coordinates);
+             const magnitudeClass = getMagnitudeClass(properties.mag);
+             const location = properties.place || 'Bilinmeyen Konum';
+             const detailUrl = properties.url || '#';
+             const googleMapLink = coords.lat && coords.lon ? `https://www.google.com/maps/@${coords.lat},${coords.lon},8z?q=${coords.lat},${coords.lon}` : '#'; // Google Maps linki
+             const significance = properties.sig !== null ? properties.sig : 'N/A';
+             const feltReports = properties.felt !== null ? properties.felt : 'N/A';
+             const alertLevel = properties.alert || 'Yok'; // Örn: "green", "yellow", "orange", "red"
+
+             modalTitle.textContent = `${location}`;
+             modalBody.innerHTML = `
+                <div class="detail-item">
+                     <span class="modal-magnitude ${magnitudeClass}" style="background-color: var(--${magnitudeClass.replace('mag-','accent-')}); color: ${['mag-moderate', 'mag-strong'].includes(magnitudeClass) ? 'var(--bg-dark)' : 'var(--text-primary)' }">
+                        <i class="fas fa-wave-square"></i> ${magnitude} ${properties.magType || 'ML'}
+                     </span>
+                </div>
+                <div class="detail-item">
+                    <i class="fas fa-calendar-alt fa-fw"></i>
+                    <div><strong>Zaman:</strong> <span>${formatTime(properties.time)}</span></div>
+                </div>
+                <div class="detail-item">
+                    <i class="fas fa-arrow-down fa-fw"></i>
+                    <div><strong>Derinlik:</strong> <span>${depth} km</span></div>
+                </div>
+                 <div class="detail-item">
+                    <i class="fas fa-map-marker-alt fa-fw"></i>
+                    <div><strong>Koordinatlar:</strong> <span>${coords.lat ? coords.lat.toFixed(4) : 'N/A'}, ${coords.lon ? coords.lon.toFixed(4) : 'N/A'}</span></div>
+                </div>
+                ${googleMapLink !== '#' ? `
+                 <div class="detail-item">
+                     <i class="fas fa-map-marked-alt fa-fw"></i>
+                     <div><strong>Haritada Göster:</strong>
+                        <a href="${googleMapLink}" target="_blank" rel="noopener noreferrer" class="modal-map-link">
+                            Google Haritalar <i class="fas fa-external-link-alt"></i>
+                         </a>
+                     </div>
+                 </div>` : ''}
+                 <div class="detail-item">
+                     <i class="fas fa-info-circle fa-fw"></i>
+                     <div><strong>Anlamlılık (Sig):</strong> <span>${significance}</span></div>
+                 </div>
+                 <div class="detail-item">
+                     <i class="fas fa-users fa-fw"></i>
+                     <div><strong>Hisseden Sayısı:</strong> <span>${feltReports}</span></div>
+                 </div>
+                <div class="detail-item">
+                     <i class="fas fa-bell fa-fw"></i>
+                    <div><strong>Uyarı Seviyesi:</strong> <span style="text-transform:capitalize; color: var(--accent-${alertLevel === 'green' ? 'green' : alertLevel === 'yellow' ? 'yellow' : alertLevel === 'orange' ? 'orange' : alertLevel === 'red' ? 'red' : 'secondary'}); font-weight: bold;">${alertLevel || 'Belirtilmemiş'}</span></div>
+                 </div>
+                <div class="detail-item">
+                     <i class="fas fa-link fa-fw"></i>
+                    <div><strong>USGS Sayfası:</strong>
+                        <a href="${detailUrl}" target="_blank" rel="noopener noreferrer">
+                            Olay Detayları <i class="fas fa-external-link-alt"></i>
+                         </a>
+                     </div>
+                 </div>
+                 ${properties.tsunami === 1 ? `
+                     <div class="detail-item tsunami-alert" style="width: 100%; justify-content: center;">
+                        <i class="fas fa-water fa-fw"></i> Dikkat: Tsunami Uyarısı Mevcut!
+                    </div>
+                 ` : ''}
+
+             `;
+
+            detailModal.classList.add('visible');
+            body.classList.add('modal-open'); // Arka plan scroll'u kilitle
+         }
+
+        /** Detay modalını kapatır */
+        function closeDetailModal() {
+             detailModal.classList.remove('visible');
+             body.classList.remove('modal-open');
+        }
+
+        /** Menüyü açar/kapatır */
+        function toggleMenu() {
+            const isOpen = sideMenu.classList.toggle('open');
+             overlay.classList.toggle('visible', isOpen);
+            container.classList.toggle('menu-open', isOpen);
+             body.classList.toggle('menu-open', isOpen); // body'ye de class ekle
+        }
+         /** Menüyü kapatır */
+         function closeMenu() {
+            if (sideMenu.classList.contains('open')) toggleMenu();
+        }
+
+        /** API Akışını değiştirir */
+         function changeApiFeed(event) {
+             event.preventDefault(); // Linkin normal davranışını engelle
+            const link = event.currentTarget;
+            const newApiUrl = link.getAttribute('data-api');
+            const newFeedName = link.getAttribute('data-feed-name');
+
+             if (newApiUrl && newApiUrl !== API_URL) {
+                 API_URL = newApiUrl;
+                 currentFeedName = newFeedName;
+                 console.log("API Akışı değiştirildi:", currentFeedName);
+
+                 // Menüdeki aktif sınıfı güncelle
+                 feedLinks.forEach(l => l.classList.remove('active'));
+                 link.classList.add('active');
+
+                 // Başlıktaki adı güncelle
+                 updateHeaderFeedName();
+
+                 fetchEarthquakes(); // Yeni API ile verileri çek
+                 closeMenu(); // Menüyü kapat
+                 stopAutoRefresh(); // Farklı akışlar için yenileme sıklığı farklı olabilir, şimdilik durdur
+                 startAutoRefresh(); // Yeniden başlat (aynı interval ile)
+             } else if (newApiUrl === API_URL) {
+                 closeMenu(); // Zaten aktifse sadece kapat
+             }
+         }
+
+         /** Başlıktaki akış adını günceller */
+         function updateHeaderFeedName() {
+            headerFeedName.textContent = currentFeedName;
+         }
+
+
+        /** Otomatik yenilemeyi başlat/durdur */
+        function startAutoRefresh() {
+             stopAutoRefresh(); // Öncekini temizle
+            refreshIntervalId = setInterval(() => fetchEarthquakes(false), REFRESH_INTERVAL); // Arka planda sessiz yenile (loading gösterme)
+             console.log(`Otomatik yenileme (${currentFeedName}) her ${REFRESH_INTERVAL / 1000 / 60} dakikada bir aktif.`);
+         }
+        function stopAutoRefresh() {
+             if (refreshIntervalId) {
+                 clearInterval(refreshIntervalId);
+                 refreshIntervalId = null;
+                 console.log("Otomatik yenileme durduruldu.");
+             }
+        }
+
+
+        // --- Olay Dinleyicileri ---
+        menuToggleButton.addEventListener('click', toggleMenu);
+        closeMenuButton.addEventListener('click', toggleMenu);
+        overlay.addEventListener('click', toggleMenu);
+        refreshButton.addEventListener('click', () => fetchEarthquakes(true)); // Manuel yenileme loading gösterir
+        closeModalButton.addEventListener('click', closeDetailModal);
+        detailModal.addEventListener('click', (event) => { // Modal dışına tıklayınca kapat
+            if (event.target === detailModal) closeDetailModal();
+        });
+        document.addEventListener('keydown', (event) => { // ESC ile modalı kapat
+            if (event.key === 'Escape' && detailModal.classList.contains('visible')) closeDetailModal();
+        });
+
+
+        // Filtre ve Sıralama Dinleyicileri
+        minMagSelect.addEventListener('change', filterAndDisplayEarthquakes);
+        sortBySelect.addEventListener('change', filterAndDisplayEarthquakes);
+
+        // Menü Link Dinleyicileri
+        feedLinks.forEach(link => {
+            link.addEventListener('click', changeApiFeed);
+         });
+
+
+        // --- Başlangıç ---
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchEarthquakes(); // İlk yükleme
+            startAutoRefresh(); // Otomatik yenilemeyi başlat
+
+            // Görünürlük API'si ile pil tasarrufu
+             document.addEventListener("visibilitychange", () => {
+                if (document.visibilityState === "visible") {
+                    // console.log("Sekme görünür oldu, veriler yenileniyor...");
+                    fetchEarthquakes(false); // Geri dönünce sessiz yenile
+                    startAutoRefresh();
+                 } else {
+                     stopAutoRefresh();
+                 }
+             });
+        });
+
+    </script>
+
+</body>
+</html>

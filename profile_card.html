@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rafine 3D Geliştirici Kartı - Uzak Görünüm</title>
+    <!-- Font Awesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        /* Genel Stiller ve Resetleme */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #0a0a1a;
+            /* Daha fazla kenar boşluğu */
+            padding: 80px; /* Tüm kenarlardan daha fazla boşluk */
+            position: relative;
+        }
+
+        /* Canvas Arka Plan Stili */
+        #particle-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        /* Sahne (Perspective ve Genel Konteyner) */
+        .scene {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            /* Daha da derin perspektif */
+            perspective: 4000px;
+            z-index: 1;
+             position: relative;
+        }
+
+        /* Kart Konteyneri (Tilt vs için Wrapper) */
+        .card-container {
+            position: relative;
+            transform-style: preserve-3d;
+        }
+
+        /* Profil Kartı Ana Stilleri */
+        .profile-card {
+            /* KARTI KÜÇÜLT */
+            width: 350px; /* Öncekinden daha dar */
+            position: relative;
+            background: rgba(22, 22, 45, 0.8); /* Biraz daha yoğun */
+            backdrop-filter: blur(28px) saturate(160%);
+            border-radius: 30px; /* Biraz daha az yuvarlak */
+            padding: 40px; /* İç boşlukları da biraz azaltalım */
+            color: #E5E5E5;
+             box-shadow:
+                /* Uzaktaki gölge daha yumuşak */
+                0 60px 90px -45px rgba(0, 0, 0, 0.55),
+                0 0 25px rgba(130, 90, 255, 0.18),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            transform-style: preserve-3d;
+             /* DAHA GERİDE VE KÜÇÜK BAŞLANGIÇ */
+            transform: rotateX(12deg) rotateY(-8deg) translateZ(-150px) scale(0.8); /* Daha geride, daha küçük */
+            transition: transform 0.75s cubic-bezier(0.19, 1, 0.22, 1), /* Biraz daha yavaş geçiş */
+                        box-shadow 0.75s cubic-bezier(0.19, 1, 0.22, 1);
+            will-change: transform, box-shadow;
+        }
+
+        /* Hover'da öne gelme (aşırı büyütmeden) */
+         .scene:hover .profile-card {
+           /* Tilt JS tarafından eklenecek, burada sadece Z ve scale */
+           transform: translateZ(0px) scale(1); /* Düz pozisyona gelsin ama aşırı büyümesin */
+           box-shadow:
+                0 70px 100px -40px rgba(0, 0, 0, 0.35), /* Hover gölgesi de daha ince */
+                0 0 40px rgba(130, 90, 255, 0.25),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+         }
+
+
+        /* Kart Üzeri Işıklandırma Efekti (Boyuta göre ayarlandı) */
+        .profile-card::before {
+            content: '';
+            position: absolute;
+            /* Kart küçüldüğü için taşma mesafesini azalt */
+            top: -15px;
+            left: -15px;
+            right: -15px;
+            bottom: -15px;
+            border-radius: inherit;
+            background: radial-gradient(
+                /* Işık alanı da biraz küçülebilir */
+                circle 400px at var(--mouse-x) var(--mouse-y),
+                rgba(255, 255, 255, 0.07), /* Işık yoğunluğu aynı kalabilir */
+                transparent 78%
+            );
+            opacity: 0;
+            transition: opacity 0.6s ease-out;
+            pointer-events: none;
+            z-index: 1;
+            will-change: background, opacity;
+        }
+
+        .card-container:hover .profile-card::before {
+            opacity: 1;
+        }
+
+        /* İç Öğeler */
+        .card-content {
+             position: relative;
+             z-index: 2;
+             transform-style: preserve-3d;
+        }
+
+        /* Profil Fotoğrafı (Kart küçüldü, orantılı ayarlayalım) */
+        .profile-picture {
+            width: 120px; /* Daha küçük */
+            height: 120px;
+            border-radius: 50%;
+            margin: 0 auto 30px; /* Üst/alt boşluk ayarı */
+            border: 6px solid; /* Kalınlık iyi */
+            border-image-slice: 1;
+            border-image-source: linear-gradient(145deg, #67e8f9, #d8b4fe);
+            box-shadow: 0 10px 30px -10px rgba(216, 180, 254, 0.35), 0 0 0 6px rgba(22, 22, 45, 0.5); /* İç gölge/çerçeve ayarı */
+            /* translateZ değeri başlangıçta kartın Z'sine göre */
+            transform: translateZ(80px); /* İçerideki derinlik hissi için yeterli */
+            transition: transform 0.6s cubic-bezier(0.215, 0.610, 0.355, 1), box-shadow 0.6s ease;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .profile-picture img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+             transform: scale(1.03);
+        }
+
+        /* Fotoğraf hover */
+         .card-container:hover .profile-picture {
+             /* Hover'da öne gelme ve büyüme daha mütevazi */
+             transform: translateZ(100px) scale(1.06) rotateZ(2deg);
+             box-shadow: 0 15px 40px -12px rgba(216, 180, 254, 0.45), 0 0 0 8px rgba(22, 22, 45, 0.3);
+         }
+
+        /* İsim ve Unvan (Boyutları hafif ayarla) */
+        h1 {
+            text-align: center;
+            color: #f0f0f5;
+            margin-bottom: 8px; /* Biraz azaltıldı */
+            font-size: 2.2em; /* Daha küçük karta göre ayar */
+            font-weight: 700;
+            transform: translateZ(60px); /* İç Z derinliği ayarı */
+            text-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+        }
+
+        h2 {
+            text-align: center;
+            background: linear-gradient(90deg, #67e8f9, #a78bfa);
+            -webkit-background-clip: text; background-clip: text;
+            color: transparent; -webkit-text-fill-color: transparent;
+            font-size: 1.15em; /* Ayarlandı */
+            margin-bottom: 25px; /* Ayarlandı */
+            font-weight: 500;
+            transform: translateZ(50px);
+            letter-spacing: 0.8px;
+        }
+
+        /* Kısa Bio */
+        .bio {
+            font-size: 0.95em; /* Ayarlandı */
+            text-align: center;
+            margin-bottom: 30px; /* Ayarlandı */
+            line-height: 1.65; /* Hafif ayar */
+            color: #b5b5c5;
+            transform: translateZ(45px);
+        }
+
+        /* Yetenekler Bölümü */
+        .skills {
+            margin-bottom: 30px; /* Ayarlandı */
+            transform: translateZ(40px);
+        }
+
+        .skills h3 {
+            color: #d5d5e5;
+            text-align: center;
+            margin-bottom: 18px; /* Ayarlandı */
+            font-size: 1.1em; /* Ayarlandı */
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+        }
+
+        .skills ul {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px 10px; /* Daha sıkı */
+        }
+
+        .skills li {
+            background: rgba(255, 255, 255, 0.07);
+            color: #c5c5d5;
+            padding: 6px 15px; /* Biraz daha kompakt */
+            border-radius: 20px; /* Tam yuvarlak */
+            font-size: 0.85em; /* Ayarlandı */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+            cursor: default;
+        }
+         .skills li:hover {
+             background: rgba(167, 139, 250, 0.25);
+             border-color: rgba(167, 139, 250, 0.45);
+             transform: translateY(-2px) scale(1.04);
+             color: #fff;
+             box-shadow: 0 4px 12px rgba(167, 139, 250, 0.12);
+         }
+
+        /* Sosyal Medya Bağlantıları */
+        .social-links {
+            text-align: center;
+            margin-bottom: 35px; /* Ayarlandı */
+            transform: translateZ(35px);
+        }
+
+        .social-links a {
+            color: #a5a5b5;
+            text-decoration: none;
+            margin: 0 14px; /* Biraz daha yakın */
+            font-size: 1.5em; /* Boyut iyi */
+            transition: color 0.3s ease, transform 0.3s ease;
+            display: inline-block;
+        }
+
+        .social-links a:hover {
+            color: #67e8f9;
+            transform: scale(1.25) translateY(-4px) rotate(4deg); /* Hover efekti benzer kalabilir */
+        }
+
+        /* İletişim Butonu */
+        .cta-button {
+            display: block;
+            width: 100%;
+            margin: 0 auto;
+            padding: 16px 20px; /* Dolgunluk iyi */
+            background: linear-gradient(135deg, #5eead4, #a78bfa);
+            color: #111827;
+            border: none;
+            border-radius: 25px; /* Daha uygun */
+            font-size: 1.1em; /* Ayarlandı */
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            box-shadow: 0 8px 25px -10px rgba(167, 139, 250, 0.45), 0 5px 15px -12px rgba(94, 234, 212, 0.55);
+            transform: translateZ(50px); /* İç Z ayarı */
+            letter-spacing: 0.5px;
+        }
+
+        .cta-button:hover {
+            background: linear-gradient(135deg, #67e8f9, #c4b5fd);
+             color: #0a0a1a;
+            box-shadow: 0 12px 30px -12px rgba(167, 139, 250, 0.55), 0 8px 18px -14px rgba(94, 234, 212, 0.65);
+            /* Hover transform daha mütevazi */
+            transform: translateZ(55px) scale(1.03) translateY(-3px);
+        }
+
+    </style>
+</head>
+<body>
+    <canvas id="particle-canvas"></canvas>
+    <div class="scene">
+        <div class="card-container">
+            <div class="profile-card" id="profileCard">
+                <div class="card-content">
+                    <div class="profile-picture">
+                         <img src="profile.jpg" alt="Profil Fotoğrafı">
+                    </div>
+                    <h1>[Adil Oğuz]</h1>
+                    <h2>Mobil Geliştirici</h2>
+                    <p class="bio">
+                       Kullanıcı odaklı, estetik ve performanslı mobil deneyimler oluşturuyorum. ☁️
+                    </p>
+                    <div class="skills">
+                        <h3>Yetenekler</h3>
+                        <ul>
+                            <li>Kotlin</li>
+                            <li>Compose</li>
+                            <li>Flutter</li>
+                            <li>React Native</li>
+                            <li>Node.js</li>
+                            <li>Firebase</li>
+                            <li>Tasarım Sis.</li>
+                        </ul>
+                    </div>
+                    <div class="social-links">
+                         <a href="#" title="LinkedIn" target="_blank"><i class="fab fa-linkedin-in"></i></a>
+                         <a href="#" title="GitHub" target="_blank"><i class="fab fa-github"></i></a>
+                         <a href="#" title="Twitter / X" target="_blank"><i class="fa-brands fa-x-twitter"></i></a>
+                         <a href="#" title="Portföy" target="_blank"><i class="fas fa-briefcase"></i></a>
+                        
+                    <button class="cta-button">İletişime Geç</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- KART 3D TILT VE IŞIK EFEKTİ ---
+        const scene = document.querySelector('.scene');
+        const cardContainer = document.querySelector('.card-container');
+        const profileCard = document.getElementById('profileCard');
+
+        scene.addEventListener('mousemove', (e) => {
+            const rect = scene.getBoundingClientRect();
+            const cardRect = profileCard.getBoundingClientRect();
+
+            const sceneWidth = rect.width;
+            const sceneHeight = rect.height;
+            const centerX = rect.left + sceneWidth / 2;
+            const centerY = rect.top + sceneHeight / 2;
+            const mouseX_tilt = e.clientX - centerX;
+            const mouseY_tilt = e.clientY - centerY;
+
+            // TILT AÇILARINI AZALT (Kart daha uzakta, daha hassas tepki)
+            const rotateY = (mouseX_tilt / (sceneWidth / 2)) * 6; // Daha küçük çarpan
+            const rotateX = (mouseY_tilt / (sceneHeight / 2)) * -8; // Daha küçük çarpan
+
+            const mouseX_light = e.clientX - cardRect.left;
+            const mouseY_light = e.clientY - cardRect.top;
+
+            // Mouse üzerindeykenki transform (Hover ile uyumlu)
+            // NOT: JS transformu, CSS :hover transformunu ezer.
+            //      Bu yüzden scale(1) ve translateZ(0) burada tekrarlanmalı
+            //      (veya tüm transform JS ile yönetilmeli).
+             profileCard.style.transform = `
+                 perspective(4000px) /* Perspective burada da tanımlı olmalı */
+                 rotateX(${rotateX}deg)
+                 rotateY(${rotateY}deg)
+                 scale(1) /* Hover scale */
+                 translateZ(0px) /* Hover Z */
+             `;
+
+
+            profileCard.style.setProperty('--mouse-x', `${mouseX_light}px`);
+            profileCard.style.setProperty('--mouse-y', `${mouseY_light}px`);
+        });
+
+        scene.addEventListener('mouseleave', () => {
+            // Başlangıç transformuna DÖN (Yeni küçültülmüş/uzaklaştırılmış hal)
+             profileCard.style.transform = 'rotateX(12deg) rotateY(-8deg) translateZ(-150px) scale(0.8)';
+
+             profileCard.style.setProperty('--mouse-x', '50%');
+             profileCard.style.setProperty('--mouse-y', '50%');
+        });
+
+        // --- CANVAS PARÇACIK EFEKTİ (Aynı kaldı, isterseniz particle sayısını azaltabilirsiniz) ---
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        let particlesArray;
+        const mouse = { x: null, y: null, radius: 100 };
+
+        window.addEventListener('mousemove', (event) => { mouse.x = event.clientX; mouse.y = event.clientY; });
+        window.addEventListener('mouseout', () => { mouse.x = undefined; mouse.y = undefined; })
+
+        function setCanvasSize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        setCanvasSize();
+        window.addEventListener('resize', () => { setCanvasSize(); initParticles(); });
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x; this.y = y;
+                this.size = Math.random() * 2.2 + 1; // Hafifçe daha küçük
+                this.baseX = this.x; this.baseY = this.y;
+                this.density = (Math.random() * 25) + 1; // Biraz daha az yoğunluk
+                this.color = 'rgba(167, 139, 254, 0.55)'; // Biraz daha soluk
+                this.opacity = Math.random() * 0.35 + 0.15; // Daha düşük başlangıç
+                this.velocity = { x: Math.random() * 0.8 - 0.4, y: Math.random() * 0.8 - 0.4 };
+            }
+            draw() { /* ... */
+                ctx.fillStyle = this.color.replace(/[^,]+(?=\))/, this.opacity); // Dinamik opacity
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.fill();
+            }
+            update() { /* ... */
+                if (this.x + this.size > canvas.width || this.x - this.size < 0) { this.velocity.x = -this.velocity.x; }
+                if (this.y + this.size > canvas.height || this.y - this.size < 0) { this.velocity.y = -this.velocity.y; }
+                this.x += this.velocity.x; this.y += this.velocity.y;
+                let dx = mouse.x - this.x; let dy = mouse.y - this.y;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                let forceDirectionX = dx / distance; let forceDirectionY = dy / distance;
+                let maxDistance = mouse.radius; let force = (maxDistance - distance) / maxDistance;
+                if (force < 0) force = 0;
+                let directionX = (forceDirectionX * force * this.density);
+                let directionY = (forceDirectionY * force * this.density);
+                 if (distance < mouse.radius) {
+                    this.x -= directionX; this.y -= directionY;
+                    this.opacity = Math.min(0.8, this.opacity + force * 0.1); // Opaklık artışı
+                    this.color = 'rgba(103, 232, 249, 0.65)';
+                 } else {
+                     this.opacity = Math.max(0.15, this.opacity - 0.01); // Opaklık azalışı
+                     this.color = 'rgba(167, 139, 254, 0.55)';
+                 }
+             }
+        }
+
+        function initParticles() {
+            particlesArray = [];
+            // Daha ferah görünüm için particle sayısını azaltabiliriz
+            let numberOfParticles = (canvas.height * canvas.width) / 11000; // Daha büyük bölen = daha az particle
+            for (let i = 0; i < numberOfParticles; i++) {
+                particlesArray.push(new Particle(Math.random() * canvas.width, Math.random() * canvas.height));
+            }
+        }
+        initParticles();
+
+        function connectParticles() {
+            let opacityValue = 1;
+            for (let a = 0; a < particlesArray.length; a++) {
+                for (let b = a; b < particlesArray.length; b++) {
+                    let dx = particlesArray[a].x - particlesArray[b].x;
+                    let dy = particlesArray[a].y - particlesArray[b].y;
+                    let distance = Math.sqrt(dx * dx + dy * dy);
+                    let connectionDistance = 120; // Bağlantı mesafesini hafif artırabiliriz
+                    if (distance < connectionDistance) {
+                        opacityValue = 1 - (distance / connectionDistance);
+                        // Çizgileri daha da soluk yapalım
+                        ctx.strokeStyle = `rgba(200, 200, 220, ${opacityValue * 0.25})`;
+                        ctx.lineWidth = 0.6; // Daha ince çizgi
+                        ctx.beginPath();
+                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
+                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < particlesArray.length; i++) { particlesArray[i].update(); particlesArray[i].draw(); }
+            connectParticles();
+            requestAnimationFrame(animateParticles);
+        }
+        animateParticles();
+
+    </script>
+</body>
+</html>
